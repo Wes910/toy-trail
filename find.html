@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Royse City Toys Around Town</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <h1>🧸 You found one!</h1>
+  <p id="toy-label">Royse City Toys Around Town</p>
+</header>
+
+<nav class="site-nav">
+  <a href="index.html">Home</a>
+  <a href="map.html">Community Map</a>
+</nav>
+
+<main>
+
+  <div class="card">
+    <h2>Where did you find it?</h2>
+    <p class="hint">Drag the pin to the exact spot, or tap "Use my location." Only the general area is needed — no exact address required.</p>
+    <div id="map"></div>
+    <button type="button" id="locate-btn" class="secondary">📍 Use my location</button>
+  </div>
+
+  <div class="card">
+    <form id="sighting-form">
+      <label for="message">Share a short message (visible to everyone on the community map)</label>
+      <textarea id="message" maxlength="500" placeholder="e.g. Found this little guy on my lunch walk and it totally made my day..." required></textarea>
+      <div class="char-count"><span id="char-count">0</span>/500</div>
+
+      <label for="photo">Add a photo (optional)</label>
+      <input type="file" id="photo" accept="image/*" capture="environment" />
+      <img id="photo-preview" style="display:none;" alt="Preview of your photo" />
+
+      <button type="submit" id="submit-btn">Drop my pin</button>
+    </form>
+    <div id="status"></div>
+  </div>
+
+</main>
+
+<footer>Be kind — posts are moderated and inappropriate content will be removed.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Inline Supabase client for public pages
+const SUPABASE_URL = "https://pecbjwvmuurzrvjoukwd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_aAMpr1-Ic86aDDaOmue9aQ_UGSygBFR";
+
+const supabaseClient = {
+  async from(table) {
+    return {
+      select: (cols = "*") => ({
+        async then(resolve) {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${cols}`, {
+            headers: { apikey: SUPABASE_ANON_KEY }
+          });
+          const data = await res.json();
+          resolve({ data: res.ok ? data : null, error: res.ok ? null : { message: "Query failed" } });
+        }
+      }),
+      insert: (payload) => ({
+        async then(resolve) {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+            body: JSON.stringify(payload)
+          });
+          resolve({ data: res.ok ? await res.json() : null, error: res.ok ? null : { message: "Insert failed" } });
+        }
+      })
+    };
+  }
+};
+</script>
+<script src="js/config.js"></script>
+<script src="js/find.js"></script>
+</body>
+</html>

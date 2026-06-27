@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Royse City Toys Around Town — Community Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <h1>🗺️ Royse City Toys Around Town</h1>
+  <p>Every toy that's been found, and how it made someone feel</p>
+</header>
+
+<nav class="site-nav">
+  <a href="index.html">Home</a>
+  <a href="map.html">Community Map</a>
+</nav>
+
+<main class="wide">
+  <div class="card">
+    <div id="map"></div>
+    <p class="hint" id="count-label">Loading sightings...</p>
+  </div>
+</main>
+
+<footer>See something inappropriate? It will be reviewed and removed.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+// Inline Supabase client for public pages
+const SUPABASE_URL = "https://pecbjwvmuurzrvjoukwd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_aAMpr1-Ic86aDDaOmue9aQ_UGSygBFR";
+
+const supabaseClient = {
+  async from(table) {
+    return {
+      select: (cols = "*") => ({
+        order: (col, opts) => ({
+          async then(resolve) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${col}.${opts.ascending ? "asc" : "desc"}`, {
+              headers: { apikey: SUPABASE_ANON_KEY }
+            });
+            const data = await res.json();
+            resolve({ data: res.ok ? data : null, error: res.ok ? null : { message: "Query failed" } });
+          }
+        })
+      })
+    };
+  }
+};
+</script>
+<script src="js/config.js"></script>
+<script src="js/map.js"></script>
+</body>
+</html>

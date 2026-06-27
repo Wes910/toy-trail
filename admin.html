@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Royse City Toys Around Town — Admin Moderation</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <h1>🔒 Admin Moderation</h1>
+  <p>Review and remove inappropriate posts</p>
+</header>
+
+<nav class="site-nav">
+  <a href="index.html">Home</a>
+  <a href="map.html">Community Map</a>
+</nav>
+
+<main class="wide">
+
+  <div class="card" id="login-card">
+    <h2>Admin login</h2>
+    <label for="admin-email">Email</label>
+    <input type="email" id="admin-email" placeholder="you@example.com" />
+    <label for="admin-password">Password</label>
+    <input type="password" id="admin-password" placeholder="••••••••" />
+    <button type="button" id="login-btn">Log in</button>
+    <div id="login-status"></div>
+    <p class="hint">This is the one admin account you created in Supabase (Authentication → Users).</p>
+  </div>
+
+  <div class="card" id="dashboard-card" style="display:none;">
+    <h2>Sightings</h2>
+    <button type="button" class="secondary" id="logout-btn">Log out</button>
+    <div id="admin-map"></div>
+    <div class="filter-tabs" id="filter-tabs">
+      <button type="button" class="tab active" data-status="pending">Pending</button>
+      <button type="button" class="tab" data-status="approved">Approved</button>
+      <button type="button" class="tab" data-status="rejected">Rejected</button>
+      <button type="button" class="tab" data-status="all">All</button>
+    </div>
+    <div id="sightings-list"></div>
+  </div>
+
+  <div class="card" id="notify-card" style="display:none;">
+    <h2>Text notifications</h2>
+    <p class="hint">Everyone on this list gets a text with Approve/Reject links whenever someone submits a new sighting.</p>
+
+    <div id="recipients-list"></div>
+
+    <label for="new-phone">Add a phone number</label>
+    <input type="text" id="new-phone" placeholder="e.g. 214-283-4243" />
+    <button type="button" id="add-phone-btn">Add number</button>
+    <div id="recipients-status"></div>
+  </div>
+
+  <div class="card" id="qr-card" style="display:none;">
+    <h2>Generate QR codes</h2>
+    <p class="hint">Creates one QR code per toy, each linking to that toy's find page. Download individually as SVG, or grab them all at once as a ZIP.</p>
+
+    <label for="qr-base-url">Site URL</label>
+    <input type="text" id="qr-base-url" placeholder="https://yoursite.netlify.app" />
+    <p class="hint">Defaults to the URL you're on right now. Change it once you've deployed to your real domain.</p>
+
+    <label for="qr-prefix">Toy ID prefix</label>
+    <input type="text" id="qr-prefix" value="toy-" />
+
+    <label for="qr-start">Starting number</label>
+    <input type="text" id="qr-start" value="1" />
+
+    <label for="qr-count">How many toys?</label>
+    <input type="text" id="qr-count" value="20" />
+
+    <p class="hint">Or skip the fields above and paste exact toy IDs instead, one per line:</p>
+    <textarea id="qr-custom-ids" placeholder="e.g.&#10;toy-park-bench&#10;toy-library-window&#10;toy-mural-wall"></textarea>
+
+    <button type="button" id="qr-generate-btn">Generate QR codes</button>
+    <button type="button" class="secondary" id="qr-download-all-btn" style="display:none;">Download all as ZIP</button>
+
+    <div id="qr-status"></div>
+    <div id="qr-grid" class="qr-grid"></div>
+  </div>
+
+</main>
+
+<footer>Deleted posts cannot be recovered.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/vendor/qr-generator.js"></script>
+<script src="js/vendor/zip-bundler.js"></script>
+<script>
+// Inline Supabase auth client — avoids CDN dependency
+const SUPABASE_URL = "https://pecbjwvmuurzrvjoukwd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_aAMpr1-Ic86aDDaOmue9aQ_UGSygBFR";
+
+const supabaseClient = {
+  auth: {
+    async signInWithPassword({ email, password }) {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) return { error: { message: data.error_description || data.message || "Login failed" } };
+        localStorage.setItem("toytrail-admin-auth", JSON.stringify(data));
+        return { error: null };
+      } catch (e) {
+        return { error: { message: e.message } };
+      }
+    },
+    async signOut() {
+      localStorage.removeItem("toytrail-admin-auth");
+    },
+    async getSession() {
+      const stored = localStorage.getItem("toytrail-admin-auth");
+      return { data: { session: stored ? JSON.parse(stored) : null } };
+    }
+  },
+  async from(table) {
+    const auth = await this.auth.getSession();
+    const token = auth.data.session?.access_token;
+    return {
+      select: (cols = "*") => ({
+        order: (col, opts) => ({
+          async then(resolve) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${cols}&order=${col}.${opts.ascending ? "asc" : "desc"}`, {
+              headers: { apikey: SUPABASE_ANON_KEY, ...(token && { Authorization: `Bearer ${token}` }) }
+            });
+            const data = await res.json();
+            resolve({ data: res.ok ? data : null, error: res.ok ? null : { message: "Query failed" } });
+          }
+        }),
+        eq: (col, val) => ({
+          async then(resolve) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${cols}&${col}=eq.${val}`, {
+              headers: { apikey: SUPABASE_ANON_KEY, ...(token && { Authorization: `Bearer ${token}` }) }
+            });
+            const data = await res.json();
+            resolve({ data: res.ok ? data : null, error: res.ok ? null : { message: "Query failed" } });
+          }
+        })
+      }),
+      update: (payload) => ({
+        eq: (col, val) => ({
+          async then(resolve) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, ...(token && { Authorization: `Bearer ${token}` }) },
+              body: JSON.stringify(payload)
+            });
+            resolve({ error: res.ok ? null : { message: "Update failed" } });
+          }
+        })
+      }),
+      insert: (payload) => ({
+        async then(resolve) {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, ...(token && { Authorization: `Bearer ${token}` }) },
+            body: JSON.stringify(payload)
+          });
+          resolve({ error: res.ok ? null : { message: "Insert failed" } });
+        }
+      })
+    };
+  }
+};
+</script>
+<script src="js/config.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/recipients.js"></script>
+<script src="js/qrcodes.js"></script>
+</body>
+</html>
